@@ -1,5 +1,18 @@
 #include "MyNonLinearities.cc"
 
+/*
+WORKFLOW:
+- test() will write various histograms, hCorrectedCalHist[MaxSources][NDet], both with and without nonlinearity corrections. 
+  matrix, mCorrectedCalMat[MaxSources], has nonlinearities applied. 
+
+PURPOSE:
+produce mCorrectedCalMat[MaxSources] with nonlinearity corrections applied and calmat[MaxSources] without nonlinearity corrections applied
+for visual comparison
+
+NOTE:
+This is a debugging script, not really making anything for further analysis.
+*/
+
 TFile *OutputSpectra;
 
 TH1D *hCorrectedCalHist[MaxSources][NDet];
@@ -10,14 +23,26 @@ double first = 0.25;
 double last = 5000.25;
 
 void GetNonLinearitiesGraph(int DetNum){
+/*
+REQUIRES:
+GraphsFiles .root file with nonlinearities applied.
 
+PURPOSE:
+Read in histograms to make matrices with
+*/
 	int i = DetNum-1;
 	gNonLinFull[i] = (TGraphErrors*)GraphsFile->Get(Form("gNonLinFull%d",DetNum) );
 	gNonLinFull[i]->Draw("AP");
 }
 
 void TestNonLinearities(int source_number,int DetNum){
+/*
+REQUIRES:
+GraphsFiles .root file with nonlinearities applied.
 
+PURPOSE:
+Makes histograms with both linearities and nonlinearities applied
+*/
 	TGraph *gTemp = new TGraph();
 	TF1 *fTemp; //
 	int i = DetNum-1;
@@ -58,14 +83,20 @@ void TestNonLinearities(int source_number,int DetNum){
 }
 
 void BuildNonLinearCorrectedMatrices(int source_number){
-	
+/*
+PURPOSE:
+Makes matrices from histograms produced by TestNonLinearities() with both linearities and nonlinearities applied
+*/	
 	int i = source_number;
 	mCorrectedCalMat[i] = new TH2D(Form("gEA_%s",Source[i].c_str()), Form("Test calibration with Non Linearity Correction%s",Source[i].c_str()), 64, 0.5, 64.5, NBins, first, last);
 	for(int j = 0; j < NDet; j++){
-		if( j == 48 || j == 49 || j == 50 || j == 51 ) continue;
+		int DetNum = j+1;
+		if( (PACES && DetNum == 49) || (PACES && DetNum == 50) || (PACES && DetNum == 51) || (PACES && DetNum == 52 ) ) continue;
+		cout << "Filling detector " << j+1 << endl;
 		for(int k = 0; k < hCorrectedCalHist[i][j]->GetXaxis()->GetNbins(); k++){
 			mCorrectedCalMat[i]->SetBinContent(j+1 ,k+1, hCorrectedCalHist[i][j]->GetBinContent(k+1) );
 		}
+		cout << "finished filling detector\n";
 	}
 	mCorrectedCalMat[i]->Write(mCorrectedCalMat[i]->GetName(),TObject::kOverwrite);
 	calmat[i]->Write(calmat[i]->GetName(),TObject::kOverwrite);
@@ -80,18 +111,21 @@ void MakeOutputSpectra(string filename){
 //SetUp();
 
 void test(){
-
+/*
+REQUIRES:
+Calibration sources .root files (analysis trees) . These should have been energy calibrated already.
+*/
 	//AddSource("152Eu","SumRuns/EnergyCalib_21662_sum.root");
 	//AddSource("60Co","SumRuns/EnergyCalib_21601_sum.root");
 	//AddSource("133Ba","SumRuns/EnergyCalib_21658_sum.root");
-	AddSource("56Co","SumRuns/EnergyCalib_21598_21600_sum.root");
+	AddSource("56Co","../SumRuns/EnergyCalib_21598_21600_sum.root");
 	GetCalSpectra();
-	OpenGraphs("NonLinearGraphs-pietro.root");
+	OpenGraphs("NonLinearGraphs-pietro.root"); // Nonlinearity graphs
 	MakeOutputSpectra("TestMyNonLinCorrection.root");
 	for(int i = 0; i < 64; i++){
 		int DetNum = i+1;
-		if( DetNum == 49 || DetNum == 50 || DetNum == 51 || DetNum == 52 ) continue;
-		TestNonLinearities(0,DetNum);
+		if( (PACES && DetNum == 49) || (PACES && DetNum == 50) || (PACES && DetNum == 51) || (PACES && DetNum == 52 ) ) continue;
+		TestNonLinearities(0,DetNum); // Every tag noted as 0 is just an index of the source we are checking.
 	}
 	BuildNonLinearCorrectedMatrices(0);
 	//TestNonLinearities(0,1);
