@@ -4,6 +4,19 @@
 TGraphErrors *gNonLin[MaxSources][NDet];	
 TGraphErrors *gNonLinFull[NDet];
 
+/*
+PURPOSE:
+Create nonlinearity corrections based on .root file (Analysis trees) created from selector files.
+
+REQUIRES:
+.root file (Analysis trees) created from selector script after energy calibration (after MyAutoCalV6.cc)
+
+WORKFLOW:
+- SetUp() tries to find non linearity corrections to be applied, writes them to graph files.
+- MakeNonLinCalFile() creates cal files for analysis trees to be created from the selector script.
+
+*/
+
 vector<tuple<double, double> > NonLinearityPoint[NDet];
 TFile *CalFits;
 TFile *NonLinGraphs;
@@ -11,7 +24,14 @@ TFile *NonLinGraphs;
 TPeakFitter *pf_NonLin[MaxSources][NDet][50];
 TRWPeak *Peak_NonLin[MaxSources][NDet][50];
 
-void GetCalSpectra(){	
+
+void SetPACESFlag( bool IsPACESOn = 1 ){
+	PACES = IsPACESOn;
+	cout << PACES << endl;
+}
+
+
+void GetCalSpectra(){	// From analysis trees, reads in calibrated matrices and histograms
 	for(int i = 0; i < NSource; i++){
 		calmat[i] = (TH2D*)fSpectra[i]->Get("gEA_NoNonLin");
 		for(int j = 0; j < NDet; j++){
@@ -22,7 +42,12 @@ void GetCalSpectra(){
 }
 
 
-void FitNonLinearities( int DetNum ){
+void FitNonLinearities( int DetNum ){ // For a given detctor, fits transition peaks in data for necessary non linearity corrections
+
+	if( (PACES && DetNum == 49) || (PACES && DetNum == 50) || (PACES && DetNum == 51) || (PACES && DetNum == 52 ) ){
+		cout << "Do not perform fit for detector " << DetNum << "... Detector is empty\n";	
+		return;
+	}
 
 	SpectraFile->cd();
 	bool good_fit;
@@ -47,12 +72,12 @@ void FitNonLinearities( int DetNum ){
 			upp = cent + 10;
 			new_low = low;
 			new_upp = upp;
-			auto [centr, err, width, chi2, pf_NonLin_curr, Peak_NonLin_curr] = FitResult(calhist[i][j],cent,new_low,new_upp);
+			auto [centr, err, width, chi2, pf_NonLin_curr, Peak_NonLin_curr] = FitResult(calhist[i][j],cent,new_low,new_upp); // FitResult() function from MyAutoCal to fit peaks 
 			pf_NonLin[i][j][k] = pf_NonLin_curr;
 			Peak_NonLin[i][j][k] = Peak_NonLin_curr;
 			cent = centr;
-			if( err == 0 || width > 3. || width < 0.5 || chi2 > 1E5 || cent < new_low || cent > new_upp ) good_fit = false;
-			/*while( err == 0 || width > 3. || width < 0.5 || chi2 > 1E5 || cent < new_low || cent > new_upp ){
+			//if( err == 0 || width > 3. || width < 0.5 || chi2 > 1E5 || cent < new_low || cent > new_upp ) good_fit = false;
+			while( err == 0 || width > 5. || width < 0.5 || chi2 > 1E5 || cent < new_low || cent > new_upp || TMath::Abs(centr-LitEnergy[i].at(k))  > 2.5 ){
 				cent = LitEnergy[i].at(k);
 				new_low = low + 8*(rand_par.Rndm()-0.5);
 				new_upp = upp + 8*(rand_par.Rndm()-0.5);
@@ -61,17 +86,17 @@ void FitNonLinearities( int DetNum ){
 				Peak_NonLin[i][j][k] = Peak_NonLin_curr;
 				cent = centr;
 				fit_counter++;
-				if( fit_counter == 10 ){
-					cout << "No good fit found...skipping data point" << endl;
+				if( fit_counter == 3 ){
+					cout << "No good fit found for " << LitEnergy[i].at(k) << " skipping data point" << endl;
 					good_fit = false;
 					break;
 				}
-			}	*/		
-			if( good_fit == true ){
-				cent = centr;
+			}			
+			if( good_fit == true ){ // Defines nonlinearities and sets resulting data point
+				//cent = centr;
 				Peak_NonLin[i][j][k]->GetFitFunction()->SetLineColor(kRed);
 				source_num[DetNum-1].push_back(i);
-				gNonLin[i][j]->SetPoint(gNonLin[i][j]->GetN(),LitEnergy[i].at(k), cent - LitEnergy[i].at(k) );
+				gNonLin[i][j]->SetPoint(gNonLin[i][j]->GetN(),LitEnergy[i].at(k), centr - LitEnergy[i].at(k) );
 				gNonLin[i][j]->SetPointError(gNonLin[i][j]->GetN()-1,0.1, err );
 				fitnum_counter++;
 			}
@@ -80,7 +105,7 @@ void FitNonLinearities( int DetNum ){
 			pf_NonLin[i][j][k]->Draw("same");
 			Peak_NonLin[i][j][k]->Draw("same");
 		}
-		calhist[i][j]->Write(calhist[i][j]->GetName(),TObject::kOverwrite);
+		calhist[i][j]->Write(calhist[i][j]->GetName(),TObject::kOverwrite); 
 		GraphsFile->cd(); gNonLin[i][j]->Write(gNonLin[i][j]->GetName(),TObject::kOverwrite);
 		SpectraFile->cd();	
 	}
@@ -89,8 +114,13 @@ void FitNonLinearities( int DetNum ){
 
 
 
-void SortNonLinearities( int DetNum ){
+void SortNonLinearities( int DetNum ){ //Sorts non linearity results by energy
 
+	if( (PACES && DetNum == 49) || (PACES && DetNum == 50) || (PACES && DetNum == 51) || (PACES && DetNum == 52 ) ){
+		cout << "Do not perform fit for detector " << DetNum << "... Detector is empty\n";	
+		return;
+	}
+	
 	//read non linearities from each source
 	for(int i = 0; i < NSource; i++){
 		gNonLin[i][DetNum-1] = (TGraphErrors*)GraphsFile->Get( Form("gNonLin%d_%s",DetNum,Source[i].c_str()) );
@@ -121,19 +151,19 @@ void SortNonLinearities( int DetNum ){
 	gNonLinFull[NDet-1]->Write(gNonLinFull[NDet-1]->GetName(), TObject::kOverwrite);
 }
 
-void MakeCalChannel(int DetNum){
+void MakeCalChannel(int DetNum){ // Writes .cal file in format used for canalysis trees
 
-	TF1 *fTemp;
+	//TF1 *fTemp;
 	int i = (DetNum-1)/4;
 	int j = (DetNum-1)%4;
 	cout << DetNum << "\t" << i << "\t" << j << endl;	
 	if( GraphsFile->GetListOfKeys()->Contains(Form("gNonLinFull%d", DetNum) ) ){
-		fTemp = (TF1*)GraphsFile->Get(Form("gNonLinFull%d", DetNum));
+		gNonLinFull[NDet-1] = (TGraphErrors*)GraphsFile->Get(Form("gNonLinFull%d", DetNum));
 		mychannel = TChannel::FindChannelByName(Form("GRG%02d%sN00A", i+1, TGriffin::GetColorFromNumber(j)));
 		//cal_pars[i*4+j] = mychannel->GetENGCoeff();
-		//mychannel->DestroyENGCal();
-		//mychannel->DestroyEnergyNonlinearity();
-		//mychannel->DestroyCTCal();
+		mychannel->DestroyENGCal();
+		mychannel->DestroyEnergyNonlinearity();
+		mychannel->DestroyCTCal();
 		//mychannel->AddEnergyNonlinearityPoint(10, 0.0 );	
 		for(int k = 0; k < gNonLinFull[NDet-1]->GetN(); k++){
 			mychannel->AddEnergyNonlinearityPoint(gNonLinFull[NDet-1]->GetPointX(k), gNonLinFull[NDet-1]->GetPointY(k) );		
@@ -146,22 +176,24 @@ void MakeCalChannel(int DetNum){
 
 }
 
-void MakeCalFile(string calfile){
+void MakeNonLinCalFile(string calfile){ // writes .cal file for all detectors
 
-	for(int i = 0; i < 2; i++){
+	for(int i = 0; i < NDet; i++){
+		int DetNum = i+1;
+		if( (PACES && DetNum == 49) || (PACES && DetNum == 50) || (PACES && DetNum == 51) || (PACES && DetNum == 52 ) ) continue;
 		MakeCalChannel(i+1);	
 	}
 	TChannel::WriteCalFile(calfile.c_str());
 }
 
-void GetNonLinearitiesSourceGraph(int DetNum, int SourceNumber){
+void GetNonLinearitiesSourceGraph(int DetNum, int SourceNumber){ 
 
 	int i = DetNum-1;
 	int n = SourceNumber;
 	gNonLin[n][i] = (TGraphErrors*)GraphsFile->Get( Form("gNonLin%d_%s",DetNum,Source[n].c_str()) );
 }
 
-void PrintNonlinearities(int DetNum){
+void PrintNonlinearities(int DetNum){ // prints non linearities that have been fit
 
 	GraphsFile->cd();	
 	int i = DetNum-1;
@@ -173,27 +205,29 @@ void PrintNonlinearities(int DetNum){
 	}
 }
 
-void SetUp(){
+void SetUp(){ // initializes from .root analysis trees and fits all non linearities
 
 	//AddSource("152Eu","SumRuns/EnergyCalib_21662_sum.root");
 	//AddSource("60Co","SumRuns/EnergyCalib_21601_sum.root");
 	//AddSource("133Ba","SumRuns/EnergyCalib_21658_sum.root");
-	AddSource("56Co","SumRuns/EnergyCalib_21598_21600_sum.root");
+	AddSource("56Co","../SumRuns/EnergyCalib_21598_21600_sum.root"); // input analysis trees after energy calibrations
 	ReadLitEnergies(); //read in energy lists	
 	//OpenRootFiles(); //open root files  make spectra
 	GetCalSpectra();	
 	GetCalPars();
-	OpenFits("CalSpectra-pietro.root");
-	OpenGraphs("NonLinearGraphs-pietro.root");
-	for(int i = 49; i < 64; i++){
+	OpenFits("CalSpectra.root");
+	OpenGraphs("NonLinearGraphs.root");
+	for(int i = 0; i < 64; i++){
 		int DetNum=i+1;
-		if( DetNum == 49 || DetNum == 50 || DetNum == 51 || DetNum == 52 ) continue;
+		if( (PACES && DetNum == 49) || (PACES && DetNum == 50) || (PACES && DetNum == 51) || (PACES && DetNum == 52 ) ) continue;
 		FitNonLinearities(i+1);
+		new TCanvas();
 		SortNonLinearities(i+1);
-	}	
+	}
+		
 }
 
-void ReFitNonLinearities(int DetNum){
+void ReFitNonLinearities(int DetNum){ // Re-fit any peaks that have not been fit in a satisfactory manner. Same as MyAutoCal ReFitPeaks()
 
 	int j = DetNum-1;
 	bool good_fit = false;

@@ -22,7 +22,7 @@ Calibration sources .root file (Analysis trees) that's produced from selector fi
 // - ReFitPeak() can be used to fit any peaks there were not initially fit well by MyFit()
 // - ReFitCalibration() can be used to separate the cal files written incase of drift between calibration runs. Format being feeding a 
 // vector in the form of {0,1,...} where the numbers index the sources you want grouped together.
-   - when ready BuildCalFile() to create .cal files for analysis tree
+   - when ready BuildEnergyCalFile() to create .cal files for analysis tree
 */
 using namespace std;
 
@@ -46,7 +46,6 @@ TF1 *fit[NDet];
 string name_SpectraFile;
 string name_GraphsFile;
 
-
 //fitting information
 double cent, err, chi2, width;
 double low, upp, new_low, new_upp;
@@ -59,6 +58,8 @@ double cal_a1[NDet], cal_a2[NDet], cal_a3[NDet];
 //fitting functions
 TPeakFitter *pf[MaxSources][NDet][100];
 TRWPeak *P1[MaxSources][NDet][100];
+
+bool PACES=true; //flag for when using paces as there is no GRIFFIN Detector 13
 
 //Below are a series of more legible ways to open files or start files
 void OpenFits(string FileName){
@@ -139,6 +140,10 @@ void GetCalPars(){ //PURPOSE: initial guess parameters used in selctor file is w
 tuple<double, double, double, double, TPeakFitter*, TRWPeak*> FitResult(TH1D *histogram, double cent_val, double low_bound, double up_bound){
 	TPeakFitter *peak_fit = new TPeakFitter(low_bound,up_bound);
 	TRWPeak *peak = new TRWPeak(cent_val);
+	//initialise parameters?
+	//peak->GetFitFunction()->SetParameter(2, 1.0);
+	//peak->GetFitFunction()->SetParameter(3, 0.4);
+	//peak->GetFitFunction()->SetParameter(5, 0.1);
 	peak_fit->AddPeak(peak);
 	peak_fit->Fit(histogram,"EQLS+");
 	double new_cent_val = peak->GetFitFunction()->GetParameter(1);
@@ -261,11 +266,10 @@ MyFits() has to be run on this detector at least once, so that literature energi
 	GraphsFile->cd();
 	cout << "PERFORMING FIT OF CALIBRATION PARAMETERS\n";
 	int i = DetNum-1;
-	cal_a1[i] = 0.;	cal_a2[i] = 1.;	cal_a3[i] = 0.;	
-	if( DetNum == 49 || DetNum == 50 || DetNum == 51 || DetNum == 52 ){
+	cal_a1[i] = 0.;	cal_a2[i] = 1.;	cal_a3[i] = 0.;
+	if( (PACES && DetNum == 49) || (PACES && DetNum == 50) || (PACES && DetNum == 51) || (PACES && DetNum == 52 ) ){
 		cout << "Do not perform fit for detector " << DetNum << "... Detector is empty\n";	
 	}
-	
 	TCanvas *C = new TCanvas();
 	C->Divide(1,2);
 	C->cd(1);
@@ -301,7 +305,8 @@ MyFits() has to be run on this detector at least once, so that literature energi
 
 void WriteFit(int DetNum){// Fits are written to the graph file
 	
-	if( DetNum == 49 || DetNum == 50 || DetNum == 51 || DetNum == 52 ){
+	
+	if( (PACES && DetNum == 49) || (PACES && DetNum == 50) || (PACES && DetNum == 51) || (PACES && DetNum == 52 ) ){
 		cout << "Do not perform fit for detector " << DetNum << "... Detector is empty\n";	
 		return;
 	}
@@ -355,7 +360,7 @@ void WriteChannelToCalFile(int DetNum){
 	}
 }
 
-void BuildCalFile(string calname){ // PURPOSE: Write .cal files for Analysis trees/selector scripts
+void BuildEnergyCalFile(string calname){ // PURPOSE: Write .cal files for Analysis trees/selector scripts
 // REQUIRES: User to be finished with all calibrations and other functions
 //           User needs to input name for the resulting cal file
 	for(int i = 0; i < NDet; i++){
@@ -486,8 +491,8 @@ void WriteFitsToText(int DetNum){// Creates .dat files to be read in elsewhere
 
 void MyAutoCal(){// run this first to initialize everything
 
-	name_SpectraFile = "Fits_92Rb";  //Name of the fit files, will be made if non-existent 
-	name_GraphsFile = "Graphs_92Rb"; //Name of the graph files, will be made if non-existent 
+	name_SpectraFile = "Test-Code-Fits";  //Name of the fit files, will be made if non-existent 
+	name_GraphsFile = "Test-Code-Graphs"; //Name of the graph files, will be made if non-existent 
 
 	cout << "WELCOME to my energy calibration script which is used to produce an energy calibration\n";
 	cout << "This script will read in lists of energies for different sources to be fitted\n";
@@ -510,10 +515,10 @@ void MyAutoCal(){// run this first to initialize everything
 
 
 	//AddSource("152Eu","SumRuns/EnergyCalib_21662_sum.root"); //Selector created file that we need to read in
-	//AddSource("60Co","SumRuns/EnergyCalib_21601_sum.root");
+	AddSource("60Co","SumRuns/EnergyCalib_21601_sum.root");
 	//AddSource("133Ba","SumRuns/EnergyCalib_21658_sum.root");
 	//AddSource("56Co","SumRuns/EnergyCalib_21598_21600_sum.root");
-	AddSource("92Rb","EnergyCalib_Rb92_Sum.root");
+	//AddSource("92Rb","EnergyCalib_Rb92_Sum.root");
 	ReadLitEnergies(); //read in energy lists	
 	//OpenRootFiles(); //open root files  make spectra	
 	GetSpectra(); //makes spectra from root file
@@ -564,10 +569,10 @@ void MakeGraphCombination(int DetNum, vector<int> SourceNum){
 void ReFitCalibration(int DetNum, vector<int> SourceNum){// Allows partitioning of calibration sources to individual graph files instead of all being combind into one.
 
 	int i = DetNum-1;
-	if( DetNum == 49 || DetNum == 50 || DetNum == 51 || DetNum == 52 ){
+	
+	if( (PACES && DetNum == 49) || (PACES && DetNum == 50) || (PACES && DetNum == 51) || (PACES && DetNum == 52 ) ){
 		cout << "Do not perform fit for detector " << DetNum << "... Detector is empty\n";	
 	}
-
 	else{
 		MakeGraphCombination(DetNum, SourceNum);
 		GraphsFile->cd();
@@ -624,12 +629,10 @@ void ReFitCalibration(int DetNum, vector<int> SourceNum){// Allows partitioning 
 void FirstAttempt(){// Runs MyFits() for all detectors.
 	for(int i = 0; i < 64; i++){
 		int DetNum = i+1;
-		if( DetNum != 49 && DetNum != 50 && DetNum != 51 && DetNum != 52 ){			
-			MyFits(DetNum);
-			FitCalibration(DetNum);
-			WriteFit(DetNum);
-		}
-		else cout << "Do not perform fit for detector " << DetNum << "... Detector is empty\n";	
+		if( (PACES && DetNum == 49) || (PACES && DetNum == 50) || (PACES && DetNum == 51) || (PACES && DetNum == 52 ) ) continue;		
+		MyFits(DetNum);
+		FitCalibration(DetNum);
+		WriteFit(DetNum);
 	}	
 }
 
