@@ -110,7 +110,7 @@ void MakeOutputSpectra(string filename){
 
 //SetUp();
 
-void test(){
+void TestNonLinearities(string outputfilename){
 /*
 REQUIRES:
 Calibration sources .root files (analysis trees) . These should have been energy calibrated already.
@@ -121,7 +121,7 @@ Calibration sources .root files (analysis trees) . These should have been energy
 	AddSource("56Co","../SumRuns/EnergyCalib_21598_21600_sum.root");
 	GetCalSpectra();
 	OpenGraphs("NonLinearGraphs-pietro.root"); // Nonlinearity graphs
-	MakeOutputSpectra("TestMyNonLinCorrection.root");
+	MakeOutputSpectra( outputfilename.c_str() );
 	for(int i = 0; i < 64; i++){
 		int DetNum = i+1;
 		if( (PACES && DetNum == 49) || (PACES && DetNum == 50) || (PACES && DetNum == 51) || (PACES && DetNum == 52 ) ) continue;
